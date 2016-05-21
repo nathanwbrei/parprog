@@ -10,9 +10,10 @@ typedef int queue_inner_t;
 
 typedef struct {
     queue_inner_t* buffer;
+    pthread_mutex_t mutex;
     int capacity;
     int front;
-    int back; // Also add necessary mutexes
+    int back;
     bool empty;
 } queue_t;
 
@@ -21,6 +22,7 @@ int init_queue(queue_t * queue, int capacity) {
     if (queue->buffer == NULL) {
         return -1;
     }
+    pthread_mutex_init(&(queue->mutex), NULL);
     queue->capacity = capacity;
     queue->front = 0;
     queue->back = 0;
@@ -30,6 +32,7 @@ int init_queue(queue_t * queue, int capacity) {
 
 int delete_queue(queue_t * queue) {
     free(queue->buffer);
+    pthread_mutex_destroy(&(queue->mutex));
     return 0;
 }
 
@@ -37,8 +40,10 @@ int push(queue_t * queue, queue_inner_t item) {
     /* Returns: 0  if push successful
      *          -1 if queue is full
      */
+    pthread_mutex_lock(&(queue->mutex));
     if ((queue->front == queue->back) && !queue->empty) {
         printf("Push failed!\n");
+        pthread_mutex_unlock(&(queue->mutex));
         return -1;
     }
     int position = queue->back; 
@@ -48,13 +53,16 @@ int push(queue_t * queue, queue_inner_t item) {
     queue->buffer[position] = item;
     queue->back = (position+1) % queue->capacity;
     queue->empty = false;
+    pthread_mutex_unlock(&(queue->mutex));
     return 0;
 }
 
 int pop(queue_t * queue, queue_inner_t * item) {
 
+    pthread_mutex_lock(&(queue->mutex));
     if ((queue->front == queue->back) && queue->empty) {
         printf("Pop failed!\n");
+        pthread_mutex_unlock(&(queue->mutex));
         return -1;
     }
     int position = queue->front;
@@ -64,6 +72,7 @@ int pop(queue_t * queue, queue_inner_t * item) {
     if (queue->front == queue->back) {
         queue->empty = true;
     }
+    pthread_mutex_unlock(&(queue->mutex));
     return 0;
 }
 
@@ -73,19 +82,29 @@ typedef struct {
     int id;
     queue_t * queue;
     int * finalSum;
+    pthread_mutex_t * globalStateMutex;
 } worker_arg_t;
     
 
+// Worker function terminates on empty queue for now
 void * workerTask(void * workerArg) {
-    // Wait for signal from main
-    worker_arg_t * arg = (worker_arg_t *) workerArg; 
+    
+    worker_arg_t * arg = (worker_arg_t *) workerArg;
+    queue_inner_t item;
+
     while(!arg->queue->empty) {
-        queue_inner_t item;
-        pop(arg->queue, &item);
-        printf("thread %d just popped %d\n", arg->id, (int) item);
-        *(arg->finalSum) += (int)item;
-        printf("thread %d just updated sum= %d\n", arg->id, *(arg->finalSum) );
-        
+
+        if ( pop(arg->queue, &item) == 0) {
+            printf("thread %d just popped %d\n", arg->id, (int) item);
+
+            // Update global state
+            pthread_mutex_lock(arg->globalStateMutex);
+            *(arg->finalSum) += (int)item;
+            printf("thread %d just updated sum= %d\n", arg->id, *(arg->finalSum) );
+            pthread_mutex_unlock(arg->globalStateMutex);
+        } else {
+            printf("thread %d just failed at popping.\n", arg->id);
+        }
     }
     return 0;
 }
@@ -116,11 +135,14 @@ int main(int argc, char *argv[])
 
     pthread_t threads[3];  // Handles to worker threads
     worker_arg_t args[3];  // Arguments to worker threads
+    pthread_mutex_t globalStateMutex;  // Global state mutex
+    pthread_mutex_init(&globalStateMutex, NULL);
 
     for (int i=0; i<3; i++) {
         args[i].id = i;
         args[i].queue = &queue;
         args[i].finalSum = &sum;
+        args[i].globalStateMutex = &globalStateMutex;
         pthread_create(&threads[i], NULL, &workerTask, args+i);
     }
 
@@ -128,6 +150,7 @@ int main(int argc, char *argv[])
     for (int i=0; i<3; i++) {
         pthread_join(threads[i],NULL);
     } 
+    pthread_mutex_destroy(&globalStateMutex);
     printf("Final sum: %d\n", sum);
 
     return 0;
