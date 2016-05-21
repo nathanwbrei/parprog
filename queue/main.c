@@ -68,6 +68,39 @@ int pop(queue_t * queue, queue_inner_t * item) {
 }
 
 
+// The type signature for the worker function
+typedef struct {
+    int id;
+    queue_t * queue;
+    int * finalSum;
+} worker_arg_t;
+    
+
+void * workerTask(void * workerArg) {
+    // Wait for signal from main
+    worker_arg_t * arg = (worker_arg_t *) workerArg; 
+    while(!arg->queue->empty) {
+        queue_inner_t item;
+        pop(arg->queue, &item);
+        printf("thread %d just popped %d\n", arg->id, (int) item);
+        *(arg->finalSum) += (int)item;
+        printf("thread %d just updated sum= %d\n", arg->id, *(arg->finalSum) );
+        
+    }
+    return 0;
+}
+
+/*
+ * Simple producer-consumer task.
+ *
+ * The main thread populates a queue with integers. 
+ * It then launches some threads which negotiate for an item off the
+ * queue, do some work on the item, and add the results to a global
+ * sum. The global sum is protected by a mutex.
+ * Main adds a bunch of items, then blocks until queue empties.
+ * Workers terminate on empty queue, for now.
+ */
+
 int main(int argc, char *argv[])
 {
     queue_t queue;
@@ -77,20 +110,25 @@ int main(int argc, char *argv[])
     push(&queue, (queue_inner_t)27);
     push(&queue, (queue_inner_t)33);
     push(&queue, (queue_inner_t)49);
-    push(&queue, (queue_inner_t)2);  // This should fail
-    push(&queue, (queue_inner_t)2);  // This should fail
 
-    queue_inner_t result;
-    pop(&queue, &result);  // Should pop 22
-    pop(&queue, &result);  // Should pop 27
-    pop(&queue, &result);  // Should pop 33
-    pop(&queue, &result);  // Should pop 49
-    pop(&queue, &result);  // Should fail
-    pop(&queue, &result);  // Should fail
+    int sum = 0;
+   
 
-    push(&queue, (queue_inner_t)10002);  // This should succeed!
-    pop(&queue, &result);  // Should pop 10002
-    pop(&queue, &result);  // Should fail
+    pthread_t threads[3];  // Handles to worker threads
+    worker_arg_t args[3];  // Arguments to worker threads
+
+    for (int i=0; i<3; i++) {
+        args[i].id = i;
+        args[i].queue = &queue;
+        args[i].finalSum = &sum;
+        pthread_create(&threads[i], NULL, &workerTask, args+i);
+    }
+
+
+    for (int i=0; i<3; i++) {
+        pthread_join(threads[i],NULL);
+    } 
+    printf("Final sum: %d\n", sum);
 
     return 0;
 }
