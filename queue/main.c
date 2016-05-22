@@ -62,7 +62,6 @@ int pop(queue_t * queue, queue_inner_t * item) {
 
     pthread_mutex_lock(&(queue->mutex));
     if ((queue->front == queue->back) && queue->empty) {
-        printf("Pop failed!\n");
         pthread_mutex_unlock(&(queue->mutex));
         return -1;
     }
@@ -137,14 +136,13 @@ void * workerTask(void * workerArg) {
 
     while(receivedCommand != TERMINATE) {
 
-        printf("WORKER %d waiting for signal.\n", arg->id);
         pthread_mutex_lock(&arg->masterToWorker->mutex);
         pthread_cond_wait(&arg->masterToWorker->cond, &arg->masterToWorker->mutex);
         receivedCommand = *arg->command;
-        printf("WORKER %d received signal %d!!!\n", arg->id, receivedCommand);
         pthread_mutex_unlock(&arg->masterToWorker->mutex);
+
         if (receivedCommand == STANDBY) {
-            printf("WORKER %d signaling IDLE\n", arg->id);
+            printf("WORKER %d going IDLE\n", arg->id);
             pthread_mutex_lock(&arg->workerToMaster->mutex);
             arg->response = IDLE;
             pthread_cond_signal(&arg->workerToMaster->cond);
@@ -155,7 +153,7 @@ void * workerTask(void * workerArg) {
             while (pop(arg->queue, &item) == 0) {
                 printf("WORKER %d processing %d\n", arg->id, (int) item);
 
-                usleep(100000);
+                sleep(1);
                 // Update global state
                 pthread_mutex_lock(arg->globalStateMutex);
                 *(arg->finalSum) += (int)item;
@@ -163,7 +161,7 @@ void * workerTask(void * workerArg) {
                 pthread_mutex_unlock(arg->globalStateMutex);
             } 
 
-            printf("WORKER %d signaling FINISHED\n", arg->id);
+            printf("WORKER %d finished\n", arg->id);
             pthread_mutex_lock(&arg->workerToMaster->mutex);
             arg->response = FINISHED;
             pthread_cond_signal(&arg->workerToMaster->cond);
@@ -174,7 +172,7 @@ void * workerTask(void * workerArg) {
     return 0;
 }
 
-#define NUMTHREADS 7
+#define NUMTHREADS 4 
 int main(int argc, char *argv[])
 {
     queue_t queue;
@@ -223,10 +221,7 @@ int main(int argc, char *argv[])
     // Block until queue emptied again
     pthread_mutex_lock(&workerToMaster.mutex);
     while (!allWorkersAck(FINISHED, args, NUMTHREADS)) {
-        printf("MASTER: About to cond_wait\n");
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
-        printf("MASTER: Done with cond_wait\n");
-        printf("MASTER: Received signal from worker.\n");
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
     printf("MASTER: All workers report FINISHED.\n");
@@ -242,10 +237,7 @@ int main(int argc, char *argv[])
     // Block until workers ACK 
     pthread_mutex_lock(&workerToMaster.mutex);
     while (!allWorkersAck(IDLE, args, NUMTHREADS)) {
-        printf("MASTER: About to cond_wait\n");
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
-        printf("MASTER: Done wiht cond_wait\n");
-        printf("MASTER: Received signal from worker.\n");
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
     printf("MASTER: All workers report IDLE.\n");
@@ -254,7 +246,20 @@ int main(int argc, char *argv[])
     push(&queue, (queue_inner_t) 2300);
     push(&queue, (queue_inner_t) 3200);
     push(&queue, (queue_inner_t) 4100);
-    
+    push(&queue, (queue_inner_t) 1400);
+    push(&queue, (queue_inner_t) 2300);
+    push(&queue, (queue_inner_t) 3200);
+    push(&queue, (queue_inner_t) 4100);
+    push(&queue, (queue_inner_t) 1400);
+    push(&queue, (queue_inner_t) 2300);
+    push(&queue, (queue_inner_t) 3200);
+    push(&queue, (queue_inner_t) 4100);
+    push(&queue, (queue_inner_t) 1400);
+    push(&queue, (queue_inner_t) 2300);
+    push(&queue, (queue_inner_t) 3200);
+    push(&queue, (queue_inner_t) 4100);
+
+
     // Announce populated queue
     pthread_mutex_lock(&masterToWorker.mutex);
     command = PROCESS;
@@ -262,12 +267,10 @@ int main(int argc, char *argv[])
     printf("MASTER: Sent signal PROCESS to workers\n");
     pthread_mutex_unlock(&masterToWorker.mutex);
 
-    printf("MASTER: Waiting for responses from workers\n");
     // Block until queue emptied again
     pthread_mutex_lock(&workerToMaster.mutex);
     while (!allWorkersAck(FINISHED, args, NUMTHREADS)) {
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
-        printf("MASTER: Received signal from worker.\n");
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
     printf("MASTER: All workers report FINISHED.\n");
