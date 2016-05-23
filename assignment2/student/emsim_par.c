@@ -68,8 +68,6 @@ int push(queue_t * queue, queue_inner_t item) {
     }
     int position = queue->back;
     
-    printf("Pushing %d to position %d\n", item, position);
-    
     queue->buffer[position] = item;
     queue->back = (position+1) % queue->capacity;
     queue->empty = false;
@@ -135,7 +133,7 @@ typedef struct {
     
     // Common to all workers
     queue_t * queue;
-    team_t** teams;
+    team_t* teams;
     team_t** successors;
     pthread_mutex_t * globalStateMutex;  // Synchronizes access to teams and successors
     condvar_t * masterToWorker;
@@ -162,14 +160,21 @@ void * workerTask(void * workerArg) {
     queue_inner_t item;
     arg->response = IDLE;
     command_t receivedCommand = STANDBY;
-    
+
+    printf("WORKER %d started\n", arg->id);
+    pthread_mutex_lock(&arg->workerToMaster->mutex);
+    arg->response = IDLE;
+    pthread_cond_signal(&arg->workerToMaster->cond);
+    pthread_mutex_unlock(&arg->workerToMaster->mutex);
+
     while(receivedCommand != TERMINATE) {
+        printf("WORKER %d waiting for signal\n", arg->id);
         
         pthread_mutex_lock(&arg->masterToWorker->mutex);
         pthread_cond_wait(&arg->masterToWorker->cond, &arg->masterToWorker->mutex);
         receivedCommand = *arg->command;
         pthread_mutex_unlock(&arg->masterToWorker->mutex);
-        
+        printf("WORKER %d received signal %d\n", arg->id, receivedCommand);
         if (receivedCommand == STANDBY) {
             printf("WORKER %d going IDLE\n", arg->id);
             pthread_mutex_lock(&arg->workerToMaster->mutex);
@@ -180,7 +185,6 @@ void * workerTask(void * workerArg) {
         else if (receivedCommand == PROCESS) {
             arg->response = WORKING;
             while (pop(arg->queue, &item) == 0) {
-                printf("WORKER %d processing some game\n", arg->id);
                 int goals1, goals2;
 
                 if (!item.final) {
@@ -191,20 +195,20 @@ void * workerTask(void * workerArg) {
                     // Update global state (synchronized)
                     pthread_mutex_lock(arg->globalStateMutex);
                     
-                    teams[item.i].goals += goals1 - goals2;
-                    teams[item.j].goals += goals2 - goals1;
+                    arg->teams[item.i].goals += goals1 - goals2;
+                    arg->teams[item.j].goals += goals2 - goals1;
                     if (goals1 > goals2)
-                        teams[item.i].points += 3;
+                        arg->teams[item.i].points += 3;
                     else if (goals1 < goals2)
-                        teams[item.j].points += 3;
+                        arg->teams[item.j].points += 3;
                     else {
-                        teams[item.i].points += 1;
-                        teams[item.j].points += 1;
+                        arg->teams[item.i].points += 1;
+                        arg->teams[item.j].points += 1;
                     }
 
                     pthread_mutex_unlock(arg->globalStateMutex);
 
-                    printf("WORKER %d played a group game\n");
+                    printf("WORKER %d played a group game\n", arg->id);
                 }
                 else {
                     
@@ -214,20 +218,20 @@ void * workerTask(void * workerArg) {
                     // Update global state (synchronized)
                     pthread_mutex_lock(arg->globalStateMutex);
                     if (goals1 > goals2)
-                        successors[item.gameNo] = team1;
+                        arg->successors[item.gameNo] = item.team1;
                     else if (goals1 < goals2)
-                        successors[item.gameNo] = team2;
+                        arg->successors[item.gameNo] = item.team2;
                     else {
                         playPenalty(item.team1, item.team2, &goals1, &goals2);
                         if (goals1 > goals2)
-                            successors[item.gameNo] = team1;
+                            arg->successors[item.gameNo] = item.team1;
                         else
-                            successors[item.gameNo] = team2;
+                            arg->successors[item.gameNo] = item.team2;
                     }
 
                     pthread_mutex_unlock(arg->globalStateMutex);
 
-                    printf("WORKER %d played a finals game\n");
+                    printf("WORKER %d played a finals game\n", arg->id);
                     
                 }
             }
@@ -263,8 +267,13 @@ static command_t command = STANDBY;
 void initializeThreads(int numThreads) {
     
     // TODO: malloc() queue, threads, args
+    const int capacity = 50;
     
-    init_queue(queue, 20); // TODO: Malloc this
+    queue = (queue_t *) malloc(capacity * sizeof(queue_inner_t));
+    threads = (pthread_t *) malloc(numThreads * sizeof(pthread_t));
+    args = (worker_arg_t *) malloc(numThreads * sizeof(worker_arg_t));
+    
+    init_queue(queue, capacity); // TODO: Malloc this
     pthread_mutex_init(&globalStateMutex, NULL); // TODO: Set as joinable or something
     condvar_init(&workerToMaster, true); // TODO: Better pred impl
     condvar_init(&masterToWorker, false);
@@ -272,8 +281,7 @@ void initializeThreads(int numThreads) {
     // Fire up workers
     for (int i=0; i<numThreads; i++) {
         args[i].id = i;
-        args[i].queue = &queue;
-        args[i].finalSum = &sum;
+        args[i].queue = queue;
         args[i].globalStateMutex = &globalStateMutex;
         args[i].workerToMaster = &workerToMaster;
         args[i].masterToWorker = &masterToWorker;
@@ -283,13 +291,17 @@ void initializeThreads(int numThreads) {
 }
 
 void destroyThreads(int numThreads) {
-    for (int i=0; i<NUMTHREADS; i++) {
+    for (int i=0; i<numThreads; i++) {
         pthread_join(threads[i], NULL);
     }
     
     pthread_mutex_destroy(&globalStateMutex);
     condvar_destroy(&masterToWorker);
     condvar_destroy(&workerToMaster);
+
+    free(queue);
+    free(threads);
+    free(args);
     // Free queue, threads, args
 
 }
@@ -298,6 +310,23 @@ void playGroups(team_t* teams, int numWorker)
 {
     static const int cNumTeamsPerGroup = NUMTEAMS / NUMGROUPS;
     int g, i, j;
+    
+    initializeThreads(numWorker); //TODO: If numWorker ever changes, this is fucked
+
+    printf("MASTER: Waiting for workers to boot up\n");
+    // Block until workers ACK
+    pthread_mutex_lock(&workerToMaster.mutex);
+    while (!allWorkersAck(IDLE, args, numWorker)) {
+        pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
+    }
+    pthread_mutex_unlock(&workerToMaster.mutex);
+    printf("MASTER: All workers report IDLE.\n");
+
+    
+    // Expose teams to workers
+    for (int k=0; k<numWorker; k++) {
+        args[k].teams = teams;
+    }
     
     // Populate queue
     for (g = 0; g < NUMGROUPS; ++g) {
@@ -327,7 +356,7 @@ void playGroups(team_t* teams, int numWorker)
     
     // Block until queue emptied again
     pthread_mutex_lock(&workerToMaster.mutex);
-    while (!allWorkersAck(FINISHED, args, NUMTHREADS)) {
+    while (!allWorkersAck(FINISHED, args, numWorker)) {
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
@@ -338,10 +367,13 @@ void playGroups(team_t* teams, int numWorker)
 
 // TODO: Does this get called once, or multiple times?
 void playFinalRound(int numGames, team_t** teams, team_t** successors, int numWorker) {
-    team_t* team1;
-    team_t* team2;
-    int i, goals1 = 0, goals2 = 0;
 
+    // Expose successors to workers
+    for (int i=0; i<numWorker; i++) {
+        args[i].successors = successors;
+    }
+
+    
     // Announce Reset
     pthread_mutex_lock(&masterToWorker.mutex);
     command = STANDBY;
@@ -352,7 +384,7 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors, int numWo
     printf("MASTER: Waiting for responses from workers\n");
     // Block until workers ACK
     pthread_mutex_lock(&workerToMaster.mutex);
-    while (!allWorkersAck(IDLE, args, NUMTHREADS)) {
+    while (!allWorkersAck(IDLE, args, numWorker)) {
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
@@ -360,7 +392,7 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors, int numWo
 
     
     // Push necessary games onto queue
-    for (i = 0; i < numGames; ++i) {
+    for (int i = 0; i < numGames; ++i) {
 
         queue_inner_t item;
         item.team1 = teams[i*2];
@@ -368,7 +400,6 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors, int numWo
         item.final = true;
         item.gameNo = i;
         item.numGames = numGames;
-        
         push(queue, item);
     }
     
@@ -381,21 +412,21 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors, int numWo
     
     // Block until queue emptied again
     pthread_mutex_lock(&workerToMaster.mutex);
-    while (!allWorkersAck(FINISHED, args, NUMTHREADS)) {
+    while (!allWorkersAck(FINISHED, args, numWorker)) {
         pthread_cond_wait(&workerToMaster.cond, &workerToMaster.mutex);
     }
     pthread_mutex_unlock(&workerToMaster.mutex);
     printf("MASTER: All workers report FINISHED.\n");
 
     
-    // If this is the last game, shut everything down
-    // Announce termination
-    pthread_mutex_lock(&masterToWorker.mutex);
-    command = TERMINATE;
-    pthread_cond_broadcast(&masterToWorker.cond);
-    pthread_mutex_unlock(&masterToWorker.mutex);
-    
-    destroyThreads(numThreads); // TODO: Does numThreads change? If so, fuck the people who designed this assignment
-
-
+    if (numGames == 1) {
+        // If this is the last game, shut everything down
+        // Announce termination
+        pthread_mutex_lock(&masterToWorker.mutex);
+        command = TERMINATE;
+        pthread_cond_broadcast(&masterToWorker.cond);
+        pthread_mutex_unlock(&masterToWorker.mutex);
+        
+        destroyThreads(numWorker); // TODO: Does numThreads change? If so, fuck the people who designed this assignment
+    }
 } 

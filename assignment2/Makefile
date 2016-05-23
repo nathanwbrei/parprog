@@ -10,12 +10,12 @@ endif
 
 #Compiler flags
 #if mode variable is empty, setting release build mode
-ifeq ($(mode),debug)
+#ifeq ($(mode),debug)
 	CFLAGS += -O0 -g
-else
-	mode = release
-	CFLAGS += -O2
-endif
+#else
+#	mode = release
+#	CFLAGS += -O2
+#endif
 
 VPATH = $(SDIR)
 SRC = $(wildcard *.c) $(wildcard */*.c)
