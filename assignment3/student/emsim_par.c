@@ -1,38 +1,38 @@
 #include <omp.h>
 #include "emsim.h"
 
-// play all (36) group games
 void playGroups(team_t* teams) {
-  printf("Called playGroups\n");
-  static const int cNumTeamsPerGroup = NUMTEAMS / NUMGROUPS;
-  int g, i, j, goalsI, goalsJ;
+ 
+  static const int cNumTeamsPerGroup = NUMTEAMS / NUMGROUPS; //6
+  static const int is[6] = {0,0,0,1,1,2};
+  static const int js[6] = {3,2,1,3,2,3};
 
-  for (g = 0; g < NUMGROUPS; ++g) {
-    for (i =  g * cNumTeamsPerGroup; i < (g+1) * cNumTeamsPerGroup; ++i) {
-      #pragma omp parallel for private(goalsI, goalsJ) firstprivate(g,i)
-      for (j = (g+1) * cNumTeamsPerGroup - 1; j > i; --j) {
+  int g, i, j, k, goalsI, goalsJ;
+ 
+  #pragma omp parallel for collapse(2) private(i,j,goalsI,goalsJ)
+  for (g = 0; g < NUMGROUPS; g++) {
+      for (k = 0; k < 6; k++) {
+  
+          i = g * cNumTeamsPerGroup + is[k];
+          j = g * cNumTeamsPerGroup + js[k];
 
-        printf("Thread %d started playing %d,%d,%d: %s vs %s\n", omp_get_thread_num(), g,i,j, (teams+i)->name, (teams+j)->name);
-        // team i plays against team j in group g
-        playGroupMatch(g, teams + i, teams + j, &goalsI, &goalsJ);
+          printf("Thread %d playing group %d game %d: %s vs %s\n", omp_get_thread_num(), g, k, (teams+i)->name, (teams+j)->name);
+          playGroupMatch(g, teams + i, teams + j, &goalsI, &goalsJ);
 
-
-        #pragma omp critical
-        {
-          teams[i].goals += goalsI - goalsJ;
-          teams[j].goals += goalsJ - goalsI;
-          if (goalsI > goalsJ)
-            teams[i].points += 3;
-          else if (goalsI < goalsJ)
-            teams[j].points += 3;
-          else {
-            teams[i].points += 1;
-            teams[j].points += 1;
+          #pragma omp critical
+          {
+            teams[i].goals += goalsI - goalsJ;
+            teams[j].goals += goalsJ - goalsI;
+            if (goalsI > goalsJ)
+              teams[i].points += 3;
+            else if (goalsI < goalsJ)
+              teams[j].points += 3;
+            else {
+              teams[i].points += 1;
+              teams[j].points += 1;
+            }
           }
-        }
-        printf("Thread %d finished playing %d,%d,%d: %s vs %s\n", omp_get_thread_num(), g,i,j, (teams+i)->name, (teams+j)->name);
       }
-    }
   }
 }
 
@@ -50,8 +50,8 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors){
     team2 = teams[i*2+1];
     playFinalMatch(numGames, i, team1, team2, &goals1, &goals2);
 
-    #pragma omp critical
-    {
+    //#pragma omp critical
+    //{
       if (goals1 > goals2)
         winners[i] = team1;
       else if (goals1 < goals2)
@@ -63,8 +63,8 @@ void playFinalRound(int numGames, team_t** teams, team_t** successors){
         else
           winners[i] = team2;
       }
-    }
-    printf("Thread %d played final match %d=>  %s-%d : %s-%d\n", omp_get_thread_num(), i, team1->name, goals1, team2->name, goals2);
+    //}
+    printf("Thread %d playing final game %d:  %s vs %s\n", omp_get_thread_num(), i, team1->name, team2->name);
   }
 
 
