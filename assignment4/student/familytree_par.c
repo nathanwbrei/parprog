@@ -18,6 +18,7 @@ void visit(tree *node, int numThreads) {
 
 
 void traverse(tree *node, int numThreads) {
+    omp_set_nested(1);
     omp_set_max_active_levels(numThreads);
     #pragma omp parallel 
     {
