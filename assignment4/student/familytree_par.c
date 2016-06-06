@@ -1,17 +1,17 @@
 #include "familytree.h"
 #include <omp.h>
 
-void visit(tree *node, int numThreads) {
+void visit(tree *node) {
 
     if (node != NULL) {
         node->IQ = compute_IQ(node->data);
         genius[node->id] = node->IQ;
 
         #pragma omp task firstprivate(node)
-        traverse(node->right, numThreads);
+        visit(node->right);
 
         #pragma omp task firstprivate(node)
-        traverse(node->left, numThreads);
+        visit(node->left);
     }
 
 }
@@ -24,7 +24,7 @@ void traverse(tree *node, int numThreads) {
     {
         #pragma omp single
         {
-            visit(node, numThreads);
+            visit(node);
         }
     }
 }
