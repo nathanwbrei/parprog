@@ -4,11 +4,14 @@
 void traverse(tree *node, int numThreads){
 	
     if (node != NULL) {
-       node->IQ = compute_IQ(node->data);
-       genius[node->id] = node->IQ;
 
        #pragma omp parallel sections 
        {
+            #pragma omp section
+            {
+                node->IQ = compute_IQ(node->data);
+                genius[node->id] = node->IQ;
+            }
             #pragma omp section
             traverse(node->right, numThreads);
 
