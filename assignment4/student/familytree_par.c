@@ -1,7 +1,7 @@
 #include "familytree.h"
 #include <omp.h>
 
-void traverse(tree *node, int numThreads) {
+void visit(tree *node, int numThreads) {
 
     if (node != NULL) {
         node->IQ = compute_IQ(node->data);
@@ -16,3 +16,14 @@ void traverse(tree *node, int numThreads) {
 
 }
 
+
+void traverse(tree *node, int numThreads) {
+    omp_set_max_active_levels(numThreads);
+    #pragma omp parallel 
+    {
+        #pragma omp single
+        {
+            visit(node, numThreads);
+        }
+    }
+}

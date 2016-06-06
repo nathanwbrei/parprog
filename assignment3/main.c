@@ -7,8 +7,8 @@ int main(int argc, char *argv[])
   //declarations
   char *filename = "em.db";
   results = calloc(sizeof(match_result), 51);
-  //struct timespec begin, end;
-  clock_t begin, end;
+  struct timespec begin, end;
+  //clock_t begin, end;
 
   // argument handling
   if (argc != 2) {
@@ -64,20 +64,20 @@ int main(int argc, char *argv[])
   getTeam("Österreich", teams + 22);
   getTeam("Ungarn", teams + 23);
 
-//  clock_gettime(CLOCK_MONOTONIC, &begin);
-//  playEM(teams);
-//  clock_gettime(CLOCK_MONOTONIC, &end);
-
-  begin = clock();
+  clock_gettime(CLOCK_MONOTONIC, &begin);
   playEM(teams);
-  end = clock();
+  clock_gettime(CLOCK_MONOTONIC, &end);
+
+//  begin = clock();
+//  playEM(teams);
+//  end = clock();
 
   // visualize the results
   visualizeEM();
   // print timing information
-  //printf("\n\nTime: %.5f seconds\n", ((double)end.tv_sec + 1.0e-9*end.tv_nsec) -
-  //                   ((double)begin.tv_sec + 1.0e-9*begin.tv_nsec));
-  printf("\n\nTime: %.5f seconds\n", (end-begin)/((float)CLOCKS_PER_SEC));
+  printf("\n\nTime: %.5f seconds\n", ((double)end.tv_sec + 1.0e-9*end.tv_nsec) -
+                     ((double)begin.tv_sec + 1.0e-9*begin.tv_nsec));
+  //printf("\n\nTime: %.5f seconds\n", (end-begin)/((float)CLOCKS_PER_SEC));
 
   closeDB();
   free(results);

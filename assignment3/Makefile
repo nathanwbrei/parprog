@@ -1,8 +1,7 @@
 NAME = emsim
-CC = gcc-5
+CC = gcc
 CFLAGS = -std=gnu99 -fopenmp -fstrict-overflow -Werror -Wall -Wshadow -pedantic -I$(CURDIR)
 LDFLAGS = libsqlite3.a -lm -lpthread -fopenmp -ldl
-mode = debug
 
 #error if student directory is not set
 ifndef SDIR
