@@ -33,20 +33,20 @@ int main(int argc, char** argv)
         }
     }
 
-    struct timespec start, stop;
+    //struct timespec start, stop;
 
 
     if (rank == 0) {
         printf("Before: %s\n", str);
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &start);
+///   clock_gettime(CLOCK_MONOTONIC, &start);
     reverse(str, str_len);
-    clock_gettime(CLOCK_MONOTONIC, &stop);
+//    clock_gettime(CLOCK_MONOTONIC, &stop);
 
     if (rank == 0) {
         printf("After : %s\n", str);
-        printf("Time: %lf seconds\n", time_diff(&start, &stop, NULL));
+//        printf("Time: %lf seconds\n", time_diff(&start, &stop, NULL));
     }
 
     MPI_Finalize();

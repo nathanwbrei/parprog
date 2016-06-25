@@ -1,7 +1,8 @@
 NAME = reverse
 CC = mpicc
 CFLAGS = -std=gnu99 -fstrict-overflow -Werror -Wall -Wshadow -pedantic
-LDFLAGS = -lm -lrt -I $(CURDIR)
+LDFLAGS = -I $(CURDIR)
+#LDFLAGS = -lm -lrt -I $(CURDIR)
 
 #error if student directory is not set
 ifndef SDIR

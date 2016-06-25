@@ -3,7 +3,7 @@
 
 void reverse_str(char *str, int strlen);
 
-double time_diff(const struct timespec *first, const struct timespec *second, struct timespec *diff);
+// double time_diff(const struct timespec *first, const struct timespec *second, struct timespec *diff);
 
 void print(const char c[], int n);
 
