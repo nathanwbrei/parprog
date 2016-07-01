@@ -76,6 +76,7 @@ void print_gol(unsigned char *grid, unsigned int dim_x, unsigned int dim_y)
 				row[j + 1] = ' ';
 			else
 				row[j + 1] = '*';
+			//row[j+1] = c_grid[i][j] + 'A';
 		}
 		printf("%s", row);
 	}

@@ -40,8 +40,8 @@ unsigned int gol(unsigned char *grid, unsigned int dim_x, unsigned int dim_y, un
 	// Allocate subdomain grid_in, grid_out
 
 	unsigned char *grid_in, *grid_out;
-	grid_in = calloc(sizeof(unsigned char), lengths[rank]);
-	grid_out = calloc(sizeof(unsigned char), lengths[rank]);
+	grid_in  = calloc(sizeof(unsigned char), lengths[rank] + 2*dim_x);
+	grid_out = calloc(sizeof(unsigned char), lengths[rank] + 2*dim_x);
 
 	if (grid_in == NULL || grid_out == NULL)
 		exit(EXIT_FAILURE);
@@ -49,7 +49,7 @@ unsigned int gol(unsigned char *grid, unsigned int dim_x, unsigned int dim_y, un
 
 	// Scatterv subdomains to local grid_in
 
-	MPI_Scatterv(grid, lengths, offsets, MPI_CHAR, grid_in, lengths[rank], MPI_CHAR, 0, MPI_COMM_WORLD);
+	MPI_Scatterv(grid, lengths, offsets, MPI_CHAR, grid_in + dim_x, lengths[rank], MPI_CHAR, 0, MPI_COMM_WORLD);
 
 //	for (int x = 0; x < lengths[rank]; x++) {
 //		grid_in[x] = rank;
@@ -57,20 +57,31 @@ unsigned int gol(unsigned char *grid, unsigned int dim_x, unsigned int dim_y, un
 
 	for (int t = 0; t < time_steps; ++t) {
 
-		// Sendrecv ghost layers to neighbors
+		// Send top row to above 
+		MPI_Sendrecv(
+			grid_in + dim_x, dim_x, MPI_CHAR, (rank - 1 + np)%np, 0,
+			grid_in + lengths[rank] - dim_x, dim_x, MPI_CHAR, (rank+1)%np, 0, 
+			MPI_COMM_WORLD, MPI_STATUS_IGNORE
+		);
 
-		for (int y = 0; y < lengths[rank]/dim_x; ++y) {
+		// Send bottom row to below neighbor
+		MPI_Sendrecv(
+			grid_in + lengths[rank] - 2*dim_x, dim_x, MPI_CHAR, (rank + 1)%np, 0,
+			grid_in, dim_x, MPI_CHAR, (rank-1+np)%np, 0,
+			MPI_COMM_WORLD, MPI_STATUS_IGNORE
+		);
+
+		for (int y = 1; y < lengths[rank]/dim_x + 2; ++y) {
 			for (int x = 0; x < dim_x; ++x) {
 
-				evolve(grid_in, grid_out, dim_x, lengths[rank]/dim_x, x, y);
+				evolve(grid_in, grid_out, dim_x, lengths[rank]/dim_x + 2, x, y);
 			}
 		}
 		swap((void**)&grid_in, (void**)&grid_out);
 	}
 
-
 	// Gatherv subdomains back to grid
-	MPI_Gatherv(grid_in, lengths[rank], MPI_CHAR, grid, lengths, offsets, MPI_CHAR, 0, MPI_COMM_WORLD);
+	MPI_Gatherv(grid_in + dim_x, lengths[rank], MPI_CHAR, grid, lengths, offsets, MPI_CHAR, 0, MPI_COMM_WORLD);
 
 	free(grid_in);
 	free(grid_out);
