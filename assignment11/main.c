@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	struct timespec begin, end;
+	// struct timespec begin, end;
 	unsigned char *grid = NULL;
 
 	MPI_Init(&argc, &argv);
@@ -54,23 +54,22 @@ int main(int argc, char *argv[])
 
 		if (dim_x < 100)
 			print_gol(grid, dim_x, dim_y);
+   		printf("\n\n");
 
-		printf("\n\n");
-
-		clock_gettime(CLOCK_REALTIME, &begin);
+		//clock_gettime(CLOCK_REALTIME, &begin);
 	}
 
 	unsigned int living_cells = gol(grid, dim_x, dim_y, time_steps);
 	if (rank == 0)
 	{
 
-		clock_gettime(CLOCK_REALTIME, &end);
+		//clock_gettime(CLOCK_REALTIME, &end);
 
 		if (dim_x < 100)
 			print_gol(grid, dim_x, dim_y);
 
 		printf("Living Cells after %u time steps: %u\n", time_steps, living_cells);
-		printf("Time: %.3lf seconds\n", ts_to_double(ts_diff(begin, end)));
+		//printf("Time: %.3lf seconds\n", ts_to_double(ts_diff(begin, end)));
 
 		free(grid);
 

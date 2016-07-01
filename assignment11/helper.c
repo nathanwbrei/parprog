@@ -15,6 +15,7 @@ int str_cmatch(const char* a, const char* b)
 	return i;
 }
 
+/*
 struct timespec ts_diff(struct timespec a, struct timespec b)
 {
 	struct timespec t;
@@ -32,6 +33,7 @@ double ts_to_double(struct timespec time)
 {
 	return time.tv_sec + time.tv_nsec / 1e9;
 }
+*/
 
 int AlmostEqualRelative(double A, double B, double maxRelDiff)
 {
