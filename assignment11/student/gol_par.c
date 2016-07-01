@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <mpi.h>
 
 #include "helper.h"
 
@@ -11,33 +12,73 @@ unsigned int gol(unsigned char *grid, unsigned int dim_x, unsigned int dim_y, un
 	// MPI_Scatterv/Gatherv are checked to equal np times, and MPI_Sendrecv is expected to equal 2 * np * timesteps
 	// That is, top+bottom ghost cells * all processors must execute this command * Sendrecv executed every timestep.
 
-	unsigned char *grid_in, *grid_out, *grid_tmp;
-	size_t size = sizeof(unsigned char) * dim_x * dim_y;
 
-	grid_tmp = calloc(sizeof(unsigned char), dim_y * dim_x);
-	if (grid_tmp == NULL)
+	// Calculate domain decomposition
+
+	int rank, np;
+
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &np);
+
+	int * lengths = malloc(sizeof(int) * np);
+	int * offsets = malloc(sizeof(int) * np);
+
+	printf("lengths=\t");
+	for (int i=0; i<np; i++) {
+		lengths[i] = dim_x * (dim_y/np + (i < (dim_y % np)));
+		printf("%d\t",lengths[i]);
+	}
+	printf("\noffsets=\t0\t");
+	offsets[0] = 0;
+	for (int i=1; i<np; i++) {
+		offsets[i] = offsets[i-1] + lengths[i-1];
+		printf("%d\t",offsets[i]);
+	}
+	printf("\n");
+
+
+	// Allocate subdomain grid_in, grid_out
+
+	unsigned char *grid_in, *grid_out;
+	grid_in = calloc(sizeof(unsigned char), lengths[rank]);
+	grid_out = calloc(sizeof(unsigned char), lengths[rank]);
+
+	if (grid_in == NULL || grid_out == NULL)
 		exit(EXIT_FAILURE);
 
 
-	grid_in = grid;
-	grid_out = grid_tmp;
+	// Scatterv subdomains to local grid_in
 
-	for (int t = 0; t < time_steps; ++t)
-	{
-		for (int y = 0; y < dim_y; ++y)
-		{
-			for (int x = 0; x < dim_x; ++x)
-			{
-				evolve(grid_in, grid_out, dim_x, dim_y, x, y);
+	MPI_Scatterv(grid, lengths, offsets, MPI_CHAR, grid_in, lengths[rank], MPI_CHAR, 0, MPI_COMM_WORLD);
+
+//	for (int x = 0; x < lengths[rank]; x++) {
+//		grid_in[x] = rank;
+//	}
+
+	for (int t = 0; t < time_steps; ++t) {
+
+		// Sendrecv ghost layers to neighbors
+
+		for (int y = 0; y < lengths[rank]/dim_x; ++y) {
+			for (int x = 0; x < dim_x; ++x) {
+
+				evolve(grid_in, grid_out, dim_x, lengths[rank]/dim_x, x, y);
 			}
 		}
 		swap((void**)&grid_in, (void**)&grid_out);
 	}
 
-	if (grid != grid_in)
-		memcpy(grid, grid_in, size);
 
-	free(grid_tmp);
+	// Gatherv subdomains back to grid
+	MPI_Gatherv(grid_in, lengths[rank], MPI_CHAR, grid, lengths, offsets, MPI_CHAR, 0, MPI_COMM_WORLD);
 
-	return cells_alive(grid, dim_x, dim_y);
+	free(grid_in);
+	free(grid_out);
+	free(lengths);
+	free(offsets);
+
+	int result = 0;
+	if (rank == 0) result = cells_alive(grid, dim_x, dim_y);
+
+	return result;
 }

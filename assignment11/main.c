@@ -52,9 +52,9 @@ int main(int argc, char *argv[])
 
 		printf("\nGame of Life: time_steps = %u; dim_x = %u; dim_y = %u; processes = %d \n\n", time_steps, dim_x, dim_y, np);
 
-		if (dim_x < 100)
-			print_gol(grid, dim_x, dim_y);
-   		printf("\n\n");
+//		if (dim_x < 100)
+//			print_gol(grid, dim_x, dim_y);
+//   		printf("\n\n");
 
 		//clock_gettime(CLOCK_REALTIME, &begin);
 	}
